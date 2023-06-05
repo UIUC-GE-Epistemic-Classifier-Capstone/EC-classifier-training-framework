@@ -1,6 +1,6 @@
 <p align="center">
 
-<h1 align="center">EC-Fusion-RGBIR</h1>
+<h1 align="center"># EC-classifier-training-framework</h1>
 <p align="center">
 Hongqing Liu, 
 
@@ -48,4 +48,3 @@ Here I show how we store input dataset for single object detection, you can crea
           └── label.csv
 
 ```
-# EC-classifier-training-framework
