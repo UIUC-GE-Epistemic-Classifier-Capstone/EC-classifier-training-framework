@@ -1,0 +1,19 @@
+dataset: 'RGB_image_single'
+mode: 'visible' # 'visible', 'Fusion'
+data:
+  input_folder: datasets/pretrain_data
+  image_size:
+    h: 144 #1440
+    w: 120 #1200
+train:
+  batch_size: 64
+  train_ratio: 0.6
+  num_epochs: 12
+  pretrain: False
+  lr: 0.01
+  opt: 'adam' # 'sgd'
+  momentum: 0.9
+  weight_decay: 0.00001
+  lr_scheduler: 'exp'
+  gamma: 0.9
+
