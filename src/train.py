@@ -46,7 +46,6 @@ class train_utils(object):
         self.train_size = int(len(self.dataset) * self.train_ratio)
         self.test_size = len(self.dataset) - self.train_size
         self.train_dataset, self.test_dataset = random_split(self.dataset, [self.train_size, self.test_size])
-        print("self.train_dataset:", self.train_dataset.shape)
         self.train_dataloaders = DataLoader(dataset=self.train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=0)
         self.test_dataloaders = DataLoader(dataset=self.test_dataset, batch_size=self.batch_size, shuffle=True, num_workers=0)
 
