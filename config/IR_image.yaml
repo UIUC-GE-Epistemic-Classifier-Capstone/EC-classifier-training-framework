@@ -1,0 +1,30 @@
+dataset: 'IR_image_single'
+mode: 'IR' # 'visible', 'Fusion'
+data:
+  train_input_folder: datasets/IR_pretrain_data #training model on dataset
+  test_input_folder: datasets/data  #testing own data
+  image_size:
+    h: 144 #1440
+    w: 108 #1080
+train:
+  batch_size: 64
+  train_ratio: 0.6
+  num_epochs: 20
+  pretrain: False
+  lr: 0.01
+  opt: 'adam' # 'sgd'
+  momentum: 0.9
+  weight_decay: 0.00001
+  lr_scheduler: 'exp'
+  gamma: 0.9
+test:
+  batch_size: 64
+  train_ratio: 0.6
+  num_epochs: 20
+  pretrain: False
+  lr: 0.01
+  opt: 'adam' # 'sgd'
+  momentum: 0.9
+  weight_decay: 0.00001
+  lr_scheduler: 'exp'
+  gamma: 0.9
