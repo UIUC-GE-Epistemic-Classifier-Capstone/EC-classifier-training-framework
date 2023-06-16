@@ -2,15 +2,24 @@
 
 <h1 align="center">EC-classifier-training-framework</h1>
 <p align="center">
-Hongqing Liu, 
+Hongqing Liu, Stanley Gu
 
 </p>
     
 ## Run
 Here you can run EC-Fusion-RGBIR yourself using terminal command.
 
+Training model
+
 ```bash
 python -W ignore run.py config/RGB_image.yaml
+python -W ignore run.py config/IR_image.yaml
+```
+
+Testing Trained model on collected dataset
+```bash
+python -W ignore test.py config/RGB_image.yaml
+python -W ignore test.py config/IR_image.yaml
 ```
 
 ### configuration file
