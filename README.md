@@ -37,7 +37,8 @@ If you want to use network, you can add it in src/models.
 
 ## Datasets
 Here I show how we store input dataset for single object detection, you can create a new file under file "datasets".
-
+The data folder that has been normalized by the temperature interval is named thermal_N.
+Dataset link: https://drive.google.com/drive/folders/1vfvrZN-OC0U4gPugdU_IL844YZfxF3rV?usp=sharing
 ```
   DATAROOT
   └── datasets
@@ -48,6 +49,12 @@ Here I show how we store input dataset for single object detection, you can crea
           │   ├── 00002.jpg
           │   ├── ...
           │   └── ...
+          ├── thermal
+          │   ├── 00000.jpg
+          │   ├── 00001.jpg
+          │   ├── 00002.jpg
+          │   ├── ...
+          │   └── ...    
           ├── visible
           │   ├── 00000.jpg
           │   ├── 00001.jpg
