@@ -4,6 +4,7 @@ import numpy as np
 from numpy import linalg as LA
 from multiprocessing import Pool
 import torch
+import scipy
 
 # ''''''''''''''''''''''''''''''''''''''''
 def querry_parallel_knn(tree_data):
@@ -73,7 +74,7 @@ def get_activation(input, model, layer_names, verbose=1):
         handle.remove()
     data_all = []
     for layer_name, outputs in layer_outputs.items():
-        print(f"Layer: {layer_name}")
+        # print(f"Layer: {layer_name}")
         for output in outputs:
             if len(output.shape) == 4:
                 res = output.reshape(input.shape[0], -1)
@@ -154,6 +155,17 @@ class EpistemicClassifier:
         self.process_num = process_num
         self.p = p  # p norm
 
+    # stanley's modification ##compute_avg_distances in each layer
+    def compute_max_distances(self):
+        """Compute the average pairwise distance for each layer."""
+        self.max_distance = []
+        for act in self.act_list:
+            distances = scipy.spatial.distance.pdist(act.detach().numpy())
+            max_distance = np.max(distances)
+
+            self.max_distance.append(max_distance)
+        print("max_distance of each layer:", self.max_distance)
+
     def fit(self, train_x, train_y):
         '''
         Epistemic model fitting given training and testing data
@@ -161,13 +173,16 @@ class EpistemicClassifier:
         :param train_y:
         :return:
         '''
-        print('Using metric:', self.metric)
-        print('caching hiddens')
+        # print('Using metric:', self.metric)
+        # print('caching hiddens')
 
 
-        result_act = get_activation(train_x, self.model, self.selected_layer)
+        result_act = get_activation(train_x, self.model, self.selected_layer, verbose=0)
         self.act_list = result_act
+        # print("self.act_list.shape:",len(self.act_list), "shape0:", self.act_list[0].shape)
         self.label_list = train_y
+        # print("self.label_list.shape", self.label_list.shape)
+        # print("**************************************************")
 
         # if self.metric == 'mahalanobis':
         #     invCov = []
@@ -177,10 +192,10 @@ class EpistemicClassifier:
         #         if layer_index in self.selected_layer:
         #             invCov.append(ellipse_metric(W))
 
-        print('using Ball Tree for NN Search')
+        # print('using Ball Tree for NN Search')
         self.tree_list = []  # one lookup tree for each layer
         for i in range(self.n_dknn_layers):
-            print('building tree for layer {}'.format(i))
+            # print('building tree for layer {}'.format(i))
             '''
             The output of the BallTree object itself is not directly accessible or visualized as a whole.
             It represents an internal data structure optimized for nearest neighbor queries rather than a human-readable output. 
@@ -205,15 +220,17 @@ class EpistemicClassifier:
                 tree = BallTree(self.act_list[i].detach().numpy(), metric=self.metric, VI=invCov[i])
 
             else:
-                print("Not yet implemented.............use L2 distance", self.metric)
+                # print("Not yet implemented.............use L2 distance", self.metric)
                 tree = BallTree(self.act_list[i].detach().numpy())
 
             self.tree_list.append(tree)
+        # stanley modify
+        self.compute_max_distances()
 
     ''' returns the indices of the nearest neighbors according
     to their position in the training data'''
 
-    def get_neighbors(self, xs, n_neigh=None, dist_v=None):
+    def get_neighbors(self, xs, n_neigh=None, dist_v=None, mode='epsilon_ball'):
         '''
         Input data and return back label index of the data
         :param xs:
@@ -230,29 +247,49 @@ class EpistemicClassifier:
             # go through layers and get neighbors for each
 
             if self.process_num <= 1:
-                if dist_v == None:
+                if mode == 'knn':
+                # if dist_v == None:
                     # dist, knn = self.tree_list[layer_id].query(hidden, k=n_neigh[layer_id])
                     dist, knn = self.tree_list[layer_id].query(hidden.detach().numpy(), k=n_neigh[layer_id])
                     knn = [np.array(ar) for ar in knn]
                     neighbors.append(knn)
-
-                else:
+                elif mode == 'epsilon_ball':
                     # knn = self.tree_list[layer_id].query_radius(hidden, r=dist_v[layer_id])
                     knn = self.tree_list[layer_id].query_radius(hidden.detach().numpy(), r=dist_v[layer_id])
+                    # print("pre_knn:", knn)
                     knn = [np.array(ar) for ar in knn]
+                    # print("after_knn:", knn)
                     neighbors.append(knn)
+                else:
+                    dist, knn = self.tree_list[layer_id].query(hidden.detach().numpy(), k=n_neigh[layer_id])
+                    epsilon_ball = self.tree_list[layer_id].query_radius(hidden.detach().numpy(), r=dist_v[layer_id])
+                    # print("epsilon_ball:", epsilon_ball)
+                    fusion = []
+                    for i in range(len(knn)):
+                        res = []
+                        for k in range(len(knn[i])):
+                            if knn[i][k] in epsilon_ball[i]:
+                                res.append(knn[i][k])
+                        fusion.append(np.array(res))
+                    # fusion = [np.array(ar) for ar in knn if ar in epsilon_ball]
+                    neighbors.append(fusion)
+                    # print("neighbors:", neighbors)
             else:
                 # querry_parallel_nn(tree, hidden, knn, process_num, mode='knn')
-                if dist_v == None:
+                if mode == 'knn':
+                # if dist_v == None:
                     knn = querry_parallel_nn(self.tree_list[layer_id], hidden, n_neigh[layer_id], self.process_num, mode='knn')
                     knn = [np.array(ar) for ar in knn]
                     neighbors.append(knn)
-
-                else:
+                elif mode == 'epsilon_ball':
                     knn = querry_parallel_nn(self.tree_list[layer_id], hidden, dist_v[layer_id], self.process_num,mode='dist')
                     knn = [np.array(ar) for ar in knn]
                     neighbors.append(knn)
-
+                else:
+                    knn = querry_parallel_nn(self.tree_list[layer_id], hidden, n_neigh[layer_id], self.process_num, mode='knn')
+                    epsilon_ball = querry_parallel_nn(self.tree_list[layer_id], hidden, dist_v[layer_id], self.process_num,mode='dist')
+                    fusion = [np.array(ar) for ar in knn if ar in epsilon_ball]
+                    neighbors.append(fusion)
         return neighbors
 
     def predict_neigh(self, xs, n_neigh=None):
@@ -264,18 +301,20 @@ class EpistemicClassifier:
         '''
 
         imk_c = np.max(self.label_list).astype(np.int) + 2
-        neigh_list = self.get_neighbors(xs, n_neigh=n_neigh)
+        neigh_list = self.get_neighbors(xs, n_neigh=n_neigh, mode='knn')
         neigh_list = np.array(neigh_list)
 
         # pred_label = np.argmax(self.model.predict(xs), axis=1)
         pred_label = (torch.max(self.model(xs), 1)[1]).detach().numpy()
-        print("pred_label:", pred_label)
+        # print("pred_label:", pred_label)
 
         data_point = neigh_list.shape[1]
         tmp_label = np.ones(data_point).astype(np.int) * imk_c
         tmp_label = tmp_label.astype(np.int)
         for i in range(len(tmp_label)):
-            epi_label = self.label_list[np.concatenate(neigh_list[:, i])]
+            # epi_label = self.label_list[np.concatenate(neigh_list[:, i])]
+            label_tmp_array = np.array(self.label_list)
+            epi_label = label_tmp_array[list(set(np.concatenate(neigh_list[:, i])))]
             set_label = list(set(epi_label))
             if (len(set_label) == 1) and (set_label[0] == pred_label[i]):
                 tmp_label[i] = pred_label[i]
@@ -295,12 +334,12 @@ class EpistemicClassifier:
         :return:
         '''
         imk_c = np.max(self.label_list).astype(np.int) + 2
-        neigh_list = self.get_neighbors(xs, dist_v=dist) # 有几个select layer就有neigh_list就有几个数组
+        neigh_list = self.get_neighbors(xs, dist_v=dist,mode='epsilon_ball') # 有几个select layer就有neigh_list就有几个数组
         # print("neigh_list:",neigh_list)
         # print("len(neigh_list):", len(neigh_list))
 
         tmp = np.array(neigh_list)
-        # print("tmp:", tmp, tmp.shape)
+        # print("tmp:", tmp.shape)
 
         if len(tmp.shape) == 3:
             print("use beta testing function")
@@ -355,8 +394,120 @@ class EpistemicClassifier:
         pred_label = tmp_label
         return pred_label.astype(np.int)
 
+    def predict_dist_neigh(self, xs, dist=None, n_neigh=None):
+        '''
+        :param xs:
+        :param dist:
+        :param n_neigh:
+        :return:
+        '''
+        imk_c = np.max(self.label_list).astype(np.int) + 2
+        neigh_list = self.get_neighbors(xs, n_neigh=n_neigh, dist_v=dist, mode='fusion')
+        tmp = np.array(neigh_list)
+        # print("tmp2:",tmp)
+        if len(tmp.shape) == 3:
+            # print("use beta testing function")
+            neigh_list.append([[np.array([1]) for i in range(tmp.shape[2] + 1)] for j in range(xs.shape[0])])
+            neigh_list = np.array(neigh_list)
+            neigh_list = neigh_list[:-1, :]
+
+        neigh_list = np.array(neigh_list)
+        # print("shape of neigh_list:", neigh_list.shape)
+
+        assert len(neigh_list.shape) == 2
+
+        pred_label = (torch.max(self.model(xs), 1)[1]).detach().numpy()
+
+        data_point = neigh_list.shape[1]
+        tmp_label = np.ones(data_point).astype(np.int) * imk_c
+        tmp_label = tmp_label.astype(np.int)
+        # print("len(tmp_label)", len(tmp_label))
+
+        for i in range(len(tmp_label)):  # 4
+            # if one of layer has a empty set, prediction is IDK
+            label_tmp = imk_c
+            for neig in neigh_list[:, i]:
+                if len(neig) == 0:
+                    label_tmp = imk_c - 1
+
+            if label_tmp == imk_c:
+                label_tmp_array = np.array(self.label_list)
+                epi_label = label_tmp_array[list(set(np.concatenate(neigh_list[:, i])))]
+                # print("epi_label:", epi_label)
+                set_label = list(set(epi_label))
+                if (len(set_label) == 1) and (set_label[0] == pred_label[i]):
+                    label_tmp = pred_label[i]
+                if (pred_label[i] in set_label) == False:
+                    label_tmp = imk_c - 1
+
+            tmp_label[i] = label_tmp
+
+        pred_label = tmp_label
+        return pred_label.astype(np.int)
+
+    def predict_dist_neigh_individual(self, xs, dist=None, n_neigh=None, train_predict_label_accuracy = None):
+        '''
+        :param xs:
+        :param dist:
+        :param n_neigh:
+        :return:
+        '''
+
+        imk_c = np.max(self.label_list).astype(np.int) + 2
+        neigh_list = self.get_neighbors(xs, n_neigh=n_neigh, dist_v=dist, mode='fusion')
+        tmp = np.array(neigh_list)
+        # print("tmp:",tmp)
+        if len(tmp.shape) == 3:
+            print("use beta testing function")
+            neigh_list.append([[np.array([1]) for i in range(tmp.shape[2] + 1)] for j in range(xs.shape[0])])
+            neigh_list = np.array(neigh_list)
+            neigh_list = neigh_list[:-1, :]
+
+        neigh_list = np.array(neigh_list)
+        # print("shape of neigh_list:", neigh_list.shape)
+        assert len(neigh_list.shape) == 2
+
+        pred_label_test = (torch.max(self.model(xs), 1)[1]).detach().numpy()
+
+        data_point = neigh_list.shape[1]
+        tmp_label = np.ones(data_point).astype(np.int) * imk_c
+        tmp_label = tmp_label.astype(np.int)
+        reliability_res = np.ones(data_point)
+
+        for i in range(len(tmp_label)):  # 4
+            # if one of layer has a empty set, prediction is IDK
+            label_tmp = imk_c
+            reliability = 0
+            for neig in neigh_list[:, i]:
+                if len(neig) == 0:
+                    label_tmp = imk_c - 1
+                    reliability = 0
+
+            if label_tmp == imk_c:
+                train_label_tmp_array = np.array(self.label_list)
+                epi_label = train_label_tmp_array[list(set(np.concatenate(neigh_list[:, i])))]
+                train_predict_label_accuracy = np.array(train_predict_label_accuracy)
+                predict_accuracy = train_predict_label_accuracy[list(set(np.concatenate(neigh_list[:, i])))]
+                # print("epi_label:", epi_label, "len:", len(epi_label))
+                # print("predict_accuracy:", predict_accuracy, "len:", len(predict_accuracy))
+                # if the training dataset's prediction is wrong, even if its actual label is equal to test data's label, set it to unreliable
+                epi_label[predict_accuracy == -1] = -1
+                reliability = (epi_label.tolist()).count(pred_label_test[i]) / len(epi_label.tolist())
+                set_label = list(set(epi_label))
+                if (len(set_label) == 1) and (set_label[0] == pred_label_test[i]):
+                    label_tmp = pred_label_test[i]
+                if (pred_label_test[i] in set_label) == False:
+                    label_tmp = imk_c - 1
+
+            tmp_label[i] = label_tmp
+            reliability_res[i] = reliability
+
+        pred_label = tmp_label
+        # return pred_label.astype(np.int)
+        return reliability_res
+
     def predict_class(self, xs, n_neigh=None, dist=[], adaptive_ball=False,
-                      discount_radius=None, epsilon=0):
+                      discount_radius=None, epsilon=0, mode = "epsilon_ball"):
 
         if discount_radius == None:
             discount_radius = [1 for _ in range(len(self.selected_layer))]
@@ -376,22 +527,63 @@ class EpistemicClassifier:
             # print('adaptive distance in each layer', dist)
             # return self.predict_dist(xs, dist=dist)
 
-        if self.metric == 'mahalanobis' and n_neigh == None:
+        if mode == "epsilon_ball" and self.metric == 'mahalanobis' and n_neigh == None:
             print('adaptive ellipse dist - under testing', dist)
             return self.predict_dist(xs, dist=dist)
 
-        if n_neigh != None:
+        if mode == "knn" and n_neigh != None:
             if isinstance(n_neigh, list) == False:
                 tmp = [n_neigh for _ in range(len(self.selected_layer))]
                 n_neigh = tmp
-
             return self.predict_neigh(xs, n_neigh=n_neigh)
 
-        if len(dist) > 1:
+        if mode == "epsilon_ball":
+            if len(dist) > 1:
+                return self.predict_dist(xs, dist=dist)
+            elif len(dist) == 1:
+                return self.predict_dist(xs, dist=[dist]*len(self.selected_layer))
+
+        # stanley modify
+        if mode == "fusion":
+            if len(dist) > 1:
+                norm_dist = [d * float(max_d) for d, max_d in zip(dist, self.max_distance)]
+            if len(dist) == 1:
+                norm_dist = [dist[0] * max_d for max_d in self.max_distance]
+                # dist = [dist] * len(self.selected_layer)
+            if isinstance(n_neigh, list) == False:
+                tmp = [n_neigh for _ in range(len(self.selected_layer))]
+                n_neigh = tmp
+            return self.predict_dist_neigh(xs, dist = norm_dist, n_neigh = n_neigh)
+            # return self.predict_dist_neigh(xs, dist = dist, n_neigh = n_neigh)
+
+    def predict_class_individual(self, xs, n_neigh=None, dist=[], adaptive_ball=False,
+                      discount_radius=None, epsilon=0, mode = "epsilon_ball", predict_label_accuracy = None):
+
+        if mode == "epsilon_ball" and self.metric == 'mahalanobis' and n_neigh == None:
+            print('adaptive ellipse dist - under testing', dist)
             return self.predict_dist(xs, dist=dist)
-        elif len(dist) == 1:
-            return self.predict_dist(xs, dist=[dist]*len(self.selected_layer))
-            
+
+        if mode == "knn" and n_neigh != None:
+            if isinstance(n_neigh, list) == False:
+                tmp = [n_neigh for _ in range(len(self.selected_layer))]
+                n_neigh = tmp
+            return self.predict_neigh(xs, n_neigh=n_neigh)
+
+        if mode == "epsilon_ball":
+            if len(dist) > 1:
+                return self.predict_dist(xs, dist=dist)
+            elif len(dist) == 1:
+                return self.predict_dist(xs, dist=[dist]*len(self.selected_layer))
+
+        if mode == "fusion":
+            if len(dist) == 1:
+                dist = [dist[0] * max_d for max_d in self.max_distance]
+            elif len(dist) > 1:
+                dist = [d * float(max_d) for d, max_d in zip(dist, self.max_distance)]
+            if isinstance(n_neigh, list) == False:
+                tmp = [n_neigh for _ in range(len(self.selected_layer))]
+                n_neigh = tmp
+            return self.predict_dist_neigh_individual(xs, dist = dist, n_neigh = n_neigh, train_predict_label_accuracy = predict_label_accuracy)
 
 
     def hybrid_predict(self, xs, n_neigh=None, dist=None, mode='IK_intersection'):

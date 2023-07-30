@@ -6,12 +6,11 @@ import torch
 from torch import nn
 from torch import optim
 from torch.utils.data import DataLoader,random_split
-from tqdm import tqdm
 
 import src.models as models
 from src.utils.datasets import get_dataset
 from src.EC_Func.EC_Classifier_Ball_Tree import EpistemicClassifier
-
+import tqdm
 import importlib
 from matplotlib import pyplot as plt
 from torchvision.models import resnet18
@@ -45,29 +44,27 @@ class train_utils(object):
             self.device_count = 1
             logging.info('using {} cpu'.format(self.device_count))
 
-
-        self.cfg['data']['input_folder'] = self.cfg['data']['train_input_folder']
         self.dataset = get_dataset(cfg=self.cfg, device=self.device)
         self.train_size = int(len(self.dataset) * self.train_ratio)
         self.test_size = len(self.dataset) - self.train_size
         self.train_dataset, self.test_dataset = random_split(self.dataset, [self.train_size, self.test_size])
-        print("train_dataset",self.train_dataset)
         self.train_dataloaders = DataLoader(dataset=self.train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=0)
         self.test_dataloaders = DataLoader(dataset=self.test_dataset, batch_size=self.batch_size, shuffle=True, num_workers=0)
 
         # define model
-        if  self.mode == 'visible':
+        if self.mode == 'visible':
             # self.net = resnet18(num_classes=2)
             self.net = getattr(models, 'CNN')(self.cfg)
             self.net = self.net.to(self.device)
             parameter_list = [{"params": self.net.parameters(), "lr": self.lr}]
             # for fine-tune
             # parameter_list = filter(lambda p: p.requires_grad, net.parameters())
+        # elif self.mode == 'visible':
+        # else:
         elif self.mode == 'IR':
             self.net = getattr(models, 'IRCNN')(self.cfg)
             self.net = self.net.to(self.device)
             parameter_list = [{"params": self.net.parameters(), "lr": self.lr}]
-        # else:
 
         if self.opt == 'sgd':
             self.optimizer = optim.SGD(parameter_list, lr=self.lr, momentum=self.momentum, weight_decay=self.weight_decay)
@@ -82,16 +79,16 @@ class train_utils(object):
     def train(self):
         self.loss_list = []
         self.acc_list = []
-        for epoch in tqdm(range(self.num_epochs), desc="Training epochs"):
-            lr = self.optimizer.param_groups[0]['lr']
-            print('learning rate: ', lr)
-            if epoch%10 == 0:
-                print("epoch:", epoch)
+        for epoch in range(self.num_epochs):
+            # if epoch%10 == 0:
+            print("epoch:", epoch)
             self.net.train()
             logging.info('-'*5 + 'Epoch {}/{}'.format(epoch, self.num_epochs - 1) + '-'*5)
             for i, data in enumerate(self.train_dataloaders):
-                labels = data[2].long() # Convert labels to long type
+                labels = data[2].long()
                 img = data[1]
+
+                # print("train data:", img.shape)
 
                 self.optimizer.zero_grad()
 
@@ -104,24 +101,25 @@ class train_utils(object):
                 self.lr_scheduler.step()
 
             self.test()
-        if self.mode == 'visible':
-            torch.save(self.net.state_dict(), 'saved_models/RGB_model.pth')
-        elif self.mode == 'IR':
-            torch.save(self.net.state_dict(), 'saved_models/IR_model.pth')
+            if self.mode == 'visible':
+                torch.save(self.net.state_dict(), 'saved_models/RGB_model.pth')
+            elif self.mode == 'IR':
+                torch.save(self.net.state_dict(), 'saved_models/IR_model.pth')
+
         # plot
-        # plt.subplot(1, 2, 1)
-        # plt.plot(torch.range(1, len(self.loss_list)), self.loss_list)
-        # plt.xlabel('Iteration')
-        # plt.ylabel('Loss')
-        # plt.title('train loss')
+        plt.subplot(1, 2, 1)
+        plt.plot(torch.range(1, len(self.loss_list)), self.loss_list)
+        plt.xlabel('Iteration')
+        plt.ylabel('Loss')
+        plt.title('train loss')
 
-        # plt.subplot(1, 2, 2)
-        # plt.plot(torch.range(1, len(self.acc_list)), self.acc_list)
-        # plt.xlabel('Iteration')
-        # plt.ylabel('acc')
-        # plt.title('accuracy')
-
-        # plt.savefig('./single_object_IR_cnn.png')
+        plt.subplot(1, 2, 2)
+        plt.plot(torch.range(1, len(self.acc_list)), self.acc_list)
+        plt.xlabel('Iteration')
+        plt.ylabel('acc')
+        plt.title('accuracy')
+        plt.show()
+        # plt.savefig('./single_object_rgb_cnn.png')
         # plt.show()
 
 
@@ -159,6 +157,6 @@ class train_utils(object):
     def EC_classifier(self):
         # self.EC = EpistemicClassifier(self.net, self.layer_interest, metric='minkowski',p=2)
         # self.EC.fit(self.train_dataset[0], self.train_dataset[1])
-        # self.EC = EC(self.cfg, self)
-        # self.EC.EC_fit()
+        self.EC = EC(self.cfg, self)
+        self.EC.EC_fit()
         pass

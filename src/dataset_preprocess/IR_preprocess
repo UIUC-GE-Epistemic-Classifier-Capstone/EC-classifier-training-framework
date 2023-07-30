@@ -1,5 +1,6 @@
 import os
-from PIL import Image
+import numpy as np
+from PIL import Image, ImageFilter
 
 # Directory containing images to crop
 input_dir = 'datasets/data/thermal_orginal/'
@@ -18,15 +19,25 @@ for filename in filenames:
     # Construct full file path
     filepath = os.path.join(input_dir, filename)
     
-    # Open and crop the image
+    # Open image
     img = Image.open(filepath).convert('L')
+
+    # Apply a median filter for noise reduction
+    # img = img.filter(ImageFilter.MedianFilter(size=3))
+
+    # Crop the image
     width, height = img.size
     left = width * 0.01
     top = height * 0.095
     right = width * 0.9
     bottom = height * 0.83
     crop_img = img.crop((left, top, right, bottom))
-    
+
+    # Normalize the image
+    img_array = np.array(img)
+    img_array = (img_array - img_array.min()) / (img_array.max() - img_array.min()) * 255
+    img = Image.fromarray(img_array.astype('uint8'))
+
     # Construct output file path
     output_filepath = os.path.join(output_dir, filename)
     

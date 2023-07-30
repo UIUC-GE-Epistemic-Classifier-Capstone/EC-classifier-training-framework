@@ -71,10 +71,12 @@ class single_IR_image(BaseDataset):
     def __init__(self, cfg, device='cuda:0'):
         super(single_IR_image, self).__init__(cfg, device)
         self.input_folder = os.path.join(self.input_folder)
-        # self.color_paths = sorted(glob.glob(os.path.join(
-        #     self.input_folder, 'visible', '*.jpg')), key=lambda x: int(os.path.basename(x)[:-4]))
-        self.ir_paths = sorted(glob.glob(os.path.join(
-            self.input_folder, 'thermal', '*.JPG')), key=lambda x: int(os.path.basename(x)[:-4]))
+        # Get all file paths that end with '.JPG' or '.png'
+        all_files = glob.glob(os.path.join(self.input_folder, 'thermal', '*'))
+        valid_paths = [f for f in all_files if f.endswith('.JPG') or f.endswith('.png') or f.endswith('.jpg')]
+
+        # Sort the valid file paths
+        self.ir_paths = sorted(valid_paths, key=lambda x: int(os.path.basename(x).split('.')[0]))
         self.n_img = len(self.ir_paths)
         self.read_csv()
 
@@ -93,14 +95,23 @@ class single_RGB_image(BaseDataset):
     def __init__(self, cfg, device='cuda:0'):
         super(single_RGB_image, self).__init__(cfg, device)
         self.input_folder = os.path.join(self.input_folder)
-        self.color_paths = sorted(glob.glob(os.path.join(
-            # self.input_folder, 'visible', '*.jpg')), key=lambda x: int(os.path.basename(x)[:-4]))
-            self.input_folder, 'visible', '*.jpeg')), key=lambda x: int(os.path.basename(x)[:-5]))
+
+        # Get all file paths that end with '.jpg' or '.jpeg'
+        all_files = glob.glob(os.path.join(self.input_folder, 'visible', '*'))
+        valid_paths = [f for f in all_files if f.endswith('.jpg') or f.endswith('.jpeg') or f.endswith('.png')]
+
+        # Sort the valid file paths
+        self.color_paths = sorted(valid_paths, key=lambda x: int(os.path.basename(x).split('.')[0]))
+
+
+        # self.color_paths = sorted(glob.glob(os.path.join(
+        #     self.input_folder, 'visible', '*.jpg')), key=lambda x: int(os.path.basename(x)[:-4]))
+            # self.input_folder, 'visible', '*.jpeg')), key=lambda x: int(os.path.basename(x)[:-5]))
         # self.ir_paths = sorted(glob.glob(os.path.join(
         #     self.input_folder, 'thermal', '*.JPG')), key=lambda x: int(os.path.basename(x)[4:-4]))
+
         self.n_img = len(self.color_paths)
         self.read_csv()
-
     def read_csv(self):
         labels = []
         file_path = os.path.join(self.input_folder, 'label.csv')

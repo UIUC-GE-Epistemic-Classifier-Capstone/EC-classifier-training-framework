@@ -6,6 +6,8 @@ import torch
 
 from src.utils import config
 from src.train import train_utils
+from src.test import TestUtils
+
 
 
 def setup_seed(seed):
@@ -17,7 +19,7 @@ def setup_seed(seed):
 
 
 def main():
-    # setup_seed(20)
+    setup_seed(42)
 
     parser = argparse.ArgumentParser(description='Arguments for running the RGB IR-Fusion.')
     parser.add_argument('config', type=str, help='Path to config file.')
@@ -27,9 +29,32 @@ def main():
 
     trainer = train_utils(cfg)
     trainer.setup()
-    trainer.train()
-    trainer.EC_classifier()
+    # trainer.train() # train model
+
+    tester = TestUtils(cfg, trainer)
+    tester.setup()
+
+
+    tester.EC_validate_setup()
+    tester.EC_classifier()
+    tester.validate_test()
+    tester.EC_classifier_validate() #自己数据集
+    tester.merge_feature()
 
 
 if __name__ == '__main__':
     main()
+
+
+    #  train CNN
+    # online : train test
+    # 确定 epsilon ball radius,
+    # online train 分成了 train 和 test
+
+    # knn: 1,2,3,4
+    # epsilon ball: 1,2,6,7
+    # intersection: 1,2 -> which region
+
+    # 1234 ->
+    # 1267 ->
+
